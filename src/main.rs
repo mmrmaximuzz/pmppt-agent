@@ -1,25 +1,28 @@
-use std::net::TcpListener;
-
 mod agent;
+mod protocol_impl;
+
+fn main_local(_args: &[String]) {
+    unimplemented!()
+}
+
+fn main_tcp(_args: &[String]) {
+    unimplemented!()
+}
 
 fn main() {
     // TODO: here will be better CLI arguments parsing
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("usage: {} TCP_PORT", args[0]);
-        return;
+    if args.len() < 2 {
+        eprintln!("usage: {} (tcp|local) ARGS...", args[0]);
+        std::process::exit(1);
     }
 
-    let port: u16 = args[1].parse().expect("must be a correct TCP port value");
-    let endpoint = format!("0.0.0.0:{}", port);
-    println!("pmppt-agent. Listening on {}", endpoint);
-
-    let server = TcpListener::bind(endpoint).expect("cannot create TCP sock");
-    loop {
-        let (connection, remote) = server.accept().expect("failed to accept client");
-        println!("Got new connection from {}", remote);
-
-        agent::Agent::new(connection).serve();
-        println!("Done with connection from {}", remote);
+    match args[1].as_str() {
+        "local" => return main_local(&args[2..]),
+        "tcp" => return main_tcp(&args[2..]),
+        _ => {
+            eprintln!("Only 'tcp' or 'local' transports supported");
+            std::process::exit(1);
+        }
     }
 }

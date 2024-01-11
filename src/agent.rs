@@ -1,27 +1,32 @@
-use std::io::Read;
-use std::net::TcpStream;
-
 mod poller;
+pub mod protocol;
 
-pub struct Agent {
-    iostream: TcpStream,
+use protocol::{PmpptRequest, Protocol};
+
+pub struct Agent<P: Protocol> {
+    proto: P,
 }
 
-impl Agent {
-    pub fn new(iostream: TcpStream) -> Self {
-        Self {
-            iostream,
-        }
+impl<P> Agent<P>
+where
+    P: Protocol,
+{
+    pub fn new(proto: P) -> Self {
+        Self { proto }
     }
 
     pub fn serve(mut self) {
         loop {
-            match recv_message(&mut self.iostream) {
-                Some(msg) => self.handle_message(msg),
+            match self.proto.recv_request() {
                 None => {
                     eprintln!("Error: incorrect message, stop serving");
                     break;
-                },
+                }
+                Some(PmpptRequest::Finish {}) => {
+                    println!("Got finish request, stopping running activities");
+                    break;
+                }
+                Some(msg) => self.handle_message(msg),
             }
         }
 
@@ -29,24 +34,11 @@ impl Agent {
         self.stop();
     }
 
-    fn handle_message(&mut self, msg: Vec<u8>) {
-        println!("Handling message: {:?}", msg);
+    fn handle_message(&mut self, _msg: PmpptRequest) {
+        println!("Handling message");
     }
 
     fn stop(self) {
         println!("Releasing all the resources");
     }
-}
-
-fn recv_message(iostream: &mut TcpStream) -> Option<Vec<u8>> {
-    // read the header (msg length) first
-    let mut bytes = [0; 2];
-    iostream.read_exact(&mut bytes).ok()?;
-
-    // read the message itself
-    let msg_len = u16::from_le_bytes(bytes) as usize;
-    let mut message = vec![0; msg_len];
-    iostream.read_exact(&mut message).ok()?;
-
-    Some(message)
 }
