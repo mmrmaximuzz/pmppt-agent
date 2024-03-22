@@ -11,6 +11,7 @@ use crate::agent::protocol;
 #[serde(tag = "type", content = "data")]
 enum LocalRequest {
     Poll { path: String },
+    Sleep { time: f64 },
     Stop {},
 }
 
@@ -34,14 +35,9 @@ impl LocalProtocol {
             let request = match serde_json::from_value(value.clone())
                 .map_err(|_| format!("bad/unsupported request {}", value))?
             {
-                LocalRequest::Poll { path } => {
-                    protocol::PmpptRequest::Poll {
-                        path,
-                    }
-                }
-                LocalRequest::Stop {} => {
-                    protocol::PmpptRequest::Finish {}
-                }
+                LocalRequest::Poll { path } => protocol::PmpptRequest::Poll { path },
+                LocalRequest::Stop {} => protocol::PmpptRequest::Finish {},
+                LocalRequest::Sleep { time } => protocol::PmpptRequest::Sleep { time },
             };
             requests.push(request);
         }
