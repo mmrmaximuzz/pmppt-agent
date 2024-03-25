@@ -12,7 +12,7 @@ use crate::agent::protocol;
 enum LocalRequest {
     Poll { path: String },
     Sleep { time: f64 },
-    Stop {},
+    Finish {},
 }
 
 pub struct LocalProtocol {
@@ -36,7 +36,7 @@ impl LocalProtocol {
                 .map_err(|_| format!("bad/unsupported request {}", value))?
             {
                 LocalRequest::Poll { path } => protocol::PmpptRequest::Poll { path },
-                LocalRequest::Stop {} => protocol::PmpptRequest::Finish {},
+                LocalRequest::Finish {} => protocol::PmpptRequest::Finish {},
                 LocalRequest::Sleep { time } => protocol::PmpptRequest::Sleep { time },
             };
             requests.push(request);
