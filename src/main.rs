@@ -1,3 +1,6 @@
+use env_logger::Env;
+use log::{error, info};
+
 mod agent;
 mod protocol_impl;
 
@@ -12,6 +15,7 @@ fn main_local(args: &[String]) -> Result<(), String> {
     }
 
     let json_path = &args[0];
+    info!("starting agent in local mode with config: {}", json_path);
 
     let proto = protocol_impl::LocalProtocol::from_json(json_path)?;
     let agent = agent::Agent::new(proto);
@@ -24,6 +28,10 @@ fn main_tcp(_args: &[String]) -> Result<(), String> {
 }
 
 fn main_wrapper(args: &[String]) -> Result<(), String> {
+    // init log with Info level by default
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    info!("pmppt-agent");
+
     if args.len() < 2 {
         return emsg("usage: PROG (tcp|local) ARGS...");
     }
@@ -39,7 +47,7 @@ fn main() {
     // TODO: here will be better CLI arguments parsing
     let args: Vec<String> = std::env::args().collect();
     if let Err(msg) = main_wrapper(&args) {
-        eprintln!("Error: {}", msg);
+        error!("Error: {}", msg);
         std::process::exit(1);
     }
 }

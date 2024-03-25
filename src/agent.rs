@@ -1,6 +1,3 @@
-mod poller;
-pub mod protocol;
-
 use std::{
     collections::HashMap,
     sync::{atomic::AtomicBool, Arc},
@@ -8,6 +5,10 @@ use std::{
     time::Duration,
 };
 
+use log::{error, info};
+
+mod poller;
+pub mod protocol;
 use protocol::{PmpptRequest, Protocol};
 
 /// PMPPT Agent instance.
@@ -40,14 +41,16 @@ where
     }
 
     pub fn serve(mut self) {
+        info!("agent started");
+
         loop {
             match self.proto.recv_request() {
                 None => {
-                    eprintln!("Error: incorrect message, stop serving");
+                    error!("got incorrect message, stop serving");
                     break;
                 }
                 Some(PmpptRequest::Finish {}) => {
-                    println!("Got finish request, stopping running activities");
+                    info!("got 'finish' request, stopping running activities");
                     break;
                 }
                 Some(msg) => self.handle_message(msg),
@@ -61,6 +64,8 @@ where
     fn handle_message(&mut self, msg: PmpptRequest) {
         match msg {
             PmpptRequest::Poll { path } => {
+                info!("starting to poll: {}", path);
+
                 let stop_flag_agent = Arc::new(AtomicBool::default());
                 let stop_flag_thread = stop_flag_agent.clone();
                 let poll_id = self.count;
@@ -81,6 +86,7 @@ where
                 self.count += 1;
             }
             PmpptRequest::Sleep { time } => {
+                info!("sleeping for {} seconds", time);
                 // just delay the whole agent control thread
                 std::thread::sleep(Duration::from_secs_f64(time))
             }
@@ -89,7 +95,9 @@ where
     }
 
     fn stop(mut self) {
-        // fisrt set stop bits to all threads, then join to allow thread to stop in parallel
+        info!("stopping agent");
+
+        // first set stop bits to all threads, then join to allow thread to stop in parallel
         for poll in self.polls.values() {
             poll.stop.store(true, std::sync::atomic::Ordering::Release);
         }
