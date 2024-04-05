@@ -97,7 +97,7 @@ where
     fn stop(mut self) {
         info!("stopping agent");
 
-        // first set stop bits to all threads, then join to allow thread to stop in parallel
+        // first set stop bits to all threads, then join to allow threads to stop in parallel
         for poll in self.polls.values() {
             poll.stop.store(true, std::sync::atomic::Ordering::Release);
         }
