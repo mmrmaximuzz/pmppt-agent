@@ -1,6 +1,7 @@
 //! Implementations of PMPPT protocol for the agent.
 
 use std::fs;
+use std::io::Read;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -15,6 +16,7 @@ enum LocalRequest {
     // mapped PMPPT commands
     Poll { path: String },
     // local transport commands (non-PMPPT)
+    Pause { prompt: Option<String> },
     Sleep { time: f64 },
 }
 
@@ -43,6 +45,13 @@ impl LocalProtocol {
     }
 }
 
+const GENERIC_PROMPT: &str = r#"
+==================================================
+=======   Further execution is paused.     =======
+======= Press Enter to continue execution. =======
+==================================================
+"#;
+
 impl protocol::Protocol for LocalProtocol {
     fn recv_request(&mut self) -> Option<protocol::PmpptRequest> {
         loop {
@@ -54,6 +63,13 @@ impl protocol::Protocol for LocalProtocol {
                     LocalRequest::Sleep { time } => {
                         std::thread::sleep(Duration::from_secs_f64(time));
                         continue;
+                    }
+                    LocalRequest::Pause { prompt } => {
+                        println!("{}", GENERIC_PROMPT.trim());
+                        if let Some(prompt) = prompt {
+                            println!("Description: {}", prompt);
+                        }
+                        std::io::stdin().read(&mut [0u8]).expect("stdin is broken");
                     }
                 },
                 // when local requests are over, implicitly send Finish command
