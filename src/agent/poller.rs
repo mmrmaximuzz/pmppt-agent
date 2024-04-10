@@ -1,12 +1,13 @@
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 const SLEEP_TIME: Duration = Duration::from_millis(250);
 
-pub fn poll(path: String, dest: String, stop: Arc<AtomicBool>) {
+pub fn poll(path: PathBuf, dest: PathBuf, stop: Arc<AtomicBool>) {
     // open destination file with the final content
     let mut output = File::create(dest).expect("cannot open file");
 

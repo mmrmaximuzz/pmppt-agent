@@ -8,16 +8,46 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::agent::protocol;
-use crate::agent::protocol::PmpptRequest;
+use crate::agent::protocol::{PmpptRequest, SpawnMode};
+
+#[derive(Deserialize)]
+#[allow(non_camel_case_types)]
+enum ExecMode {
+    fg,
+    bgwait,
+    bgkill,
+}
+
+fn local_mode_to_agent(mode: Option<ExecMode>) -> SpawnMode {
+    match mode {
+        // default spawn is foreground
+        None => SpawnMode::Foreground,
+        // others are just mapped
+        Some(ExecMode::fg) => SpawnMode::Foreground,
+        Some(ExecMode::bgwait) => SpawnMode::BackgroundWait,
+        Some(ExecMode::bgkill) => SpawnMode::BackgroundKill,
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(tag = "type", content = "data")]
 enum LocalRequest {
     // mapped PMPPT commands
-    Poll { path: String },
+    Poll {
+        path: String,
+    },
+    Spawn {
+        cmd: String,
+        args: Option<Vec<String>>,
+        mode: Option<ExecMode>,
+    },
     // local transport commands (non-PMPPT)
-    Pause { prompt: Option<String> },
-    Sleep { time: f64 },
+    Pause {
+        prompt: Option<String>,
+    },
+    Sleep {
+        time: f64,
+    },
 }
 
 pub struct LocalProtocol {
@@ -53,12 +83,19 @@ const GENERIC_PROMPT: &str = r#"
 "#;
 
 impl protocol::Protocol for LocalProtocol {
-    fn recv_request(&mut self) -> Option<protocol::PmpptRequest> {
+    fn recv_request(&mut self) -> Option<PmpptRequest> {
         loop {
             match self.requests.pop() {
                 Some(local_req) => match local_req {
                     // provide mapped command as-is
                     LocalRequest::Poll { path } => break PmpptRequest::Poll { path },
+                    LocalRequest::Spawn { cmd, args, mode } => {
+                        break PmpptRequest::Spawn {
+                            cmd,
+                            args: args.unwrap_or_default(), // default is no args
+                            mode: local_mode_to_agent(mode), // default is foreground
+                        }
+                    }
                     // handle local commands specially
                     LocalRequest::Sleep { time } => {
                         std::thread::sleep(Duration::from_secs_f64(time));

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use env_logger::Env;
 use log::{error, info};
 
@@ -10,15 +12,17 @@ fn emsg(s: &str) -> Result<(), String> {
 }
 
 fn main_local(args: &[String]) -> Result<(), String> {
-    if args.len() != 1 {
-        return emsg("usage: PROG local PATH_TO_CONFIG");
+    if args.len() != 2 {
+        return emsg("usage: PROG local PATH_TO_CONFIG PATH_TO_OUTPUT");
     }
 
     let json_path = &args[0];
+    let logs_path = Path::new(&args[1]).to_owned();
     info!("starting agent in local mode with config: {}", json_path);
+    info!("output directory: {}", logs_path.to_string_lossy());
 
     let proto = protocol_impl::LocalProtocol::from_json(json_path)?;
-    let agent = agent::Agent::new(proto);
+    let agent = agent::Agent::new(proto, logs_path);
     agent.serve();
     Ok(())
 }
