@@ -1,22 +1,25 @@
 //! Implementations of PMPPT protocol for the agent.
 
 use std::fs;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::agent::protocol;
+use crate::agent::protocol::PmpptRequest;
 
 #[derive(Deserialize)]
 #[serde(tag = "type", content = "data")]
 enum LocalRequest {
+    // mapped PMPPT commands
     Poll { path: String },
+    // local transport commands (non-PMPPT)
     Sleep { time: f64 },
-    Finish {},
 }
 
 pub struct LocalProtocol {
-    requests: Vec<protocol::PmpptRequest>,
+    requests: Vec<LocalRequest>,
 }
 
 impl LocalProtocol {
@@ -30,19 +33,10 @@ impl LocalProtocol {
             serde_json::from_str(&content).map_err(|e| format!("bad JSON format - {}", e))?;
 
         // then map every command to PMPPT protocol
-        let mut requests = vec![];
-        for value in values {
-            let request = match serde_json::from_value(value.clone())
-                .map_err(|_| format!("bad/unsupported request {}", value))?
-            {
-                LocalRequest::Poll { path } => protocol::PmpptRequest::Poll { path },
-                LocalRequest::Finish {} => protocol::PmpptRequest::Finish {},
-                LocalRequest::Sleep { time } => protocol::PmpptRequest::Sleep { time },
-            };
-            requests.push(request);
-        }
+        let mut requests: Vec<LocalRequest> = serde_json::from_value(Value::Array(values))
+            .map_err(|e| format!("unsupported command found: {}", e))?;
 
-        // reverse to allow consuming commands with .pop() call
+        // reverse the vector to extract the elements with `pop`
         requests.reverse();
 
         Ok(LocalProtocol { requests })
@@ -51,7 +45,22 @@ impl LocalProtocol {
 
 impl protocol::Protocol for LocalProtocol {
     fn recv_request(&mut self) -> Option<protocol::PmpptRequest> {
-        self.requests.pop()
+        loop {
+            match self.requests.pop() {
+                Some(local_req) => match local_req {
+                    // provide mapped command as-is
+                    LocalRequest::Poll { path } => break PmpptRequest::Poll { path },
+                    // handle local commands specially
+                    LocalRequest::Sleep { time } => {
+                        std::thread::sleep(Duration::from_secs_f64(time));
+                        continue;
+                    }
+                },
+                // when local requests are over, implicitly send Finish command
+                None => break PmpptRequest::Finish {},
+            }
+        }
+        .into()
     }
 
     fn send_response(&mut self, _response: protocol::PmpptResponse) -> Option<()> {

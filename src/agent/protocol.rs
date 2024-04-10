@@ -3,7 +3,6 @@
 /// Input data for the agent.
 pub enum PmpptRequest {
     Poll { path: String },
-    Sleep { time: f64 },
     Finish {},
 }
 

@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     sync::{atomic::AtomicBool, Arc},
     thread::JoinHandle,
-    time::Duration,
 };
 
 use log::{error, info};
@@ -84,11 +83,6 @@ where
                 assert!(res.is_none(), "got duplicate pollers on {}", poll_id);
 
                 self.count += 1;
-            }
-            PmpptRequest::Sleep { time } => {
-                info!("sleeping for {} seconds", time);
-                // just delay the whole agent control thread
-                std::thread::sleep(Duration::from_secs_f64(time))
             }
             PmpptRequest::Finish {} => unreachable!("Finish message is already processed outside"),
         }
