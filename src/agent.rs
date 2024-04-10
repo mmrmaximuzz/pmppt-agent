@@ -60,29 +60,32 @@ where
         self.stop();
     }
 
+    fn spawn_poller(&mut self, path: String) {
+        let stop_flag_agent = Arc::new(AtomicBool::default());
+        let stop_flag_thread = stop_flag_agent.clone();
+        let poll_id = self.count;
+
+        let poll_thread = std::thread::spawn(move || {
+            poller::poll(path, format!("{}.log", poll_id), stop_flag_thread)
+        });
+
+        let res = self.polls.insert(
+            poll_id,
+            Poll {
+                stop: stop_flag_agent,
+                thrd: poll_thread,
+            },
+        );
+        assert!(res.is_none(), "got duplicate pollers on {}", poll_id);
+
+        self.count += 1;
+    }
+
     fn handle_message(&mut self, msg: PmpptRequest) {
         match msg {
             PmpptRequest::Poll { path } => {
                 info!("starting to poll: {}", path);
-
-                let stop_flag_agent = Arc::new(AtomicBool::default());
-                let stop_flag_thread = stop_flag_agent.clone();
-                let poll_id = self.count;
-
-                let poll_thread = std::thread::spawn(move || {
-                    poller::poll(path, format!("{}.log", poll_id), stop_flag_thread)
-                });
-
-                let res = self.polls.insert(
-                    poll_id,
-                    Poll {
-                        stop: stop_flag_agent,
-                        thrd: poll_thread,
-                    },
-                );
-                assert!(res.is_none(), "got duplicate pollers on {}", poll_id);
-
-                self.count += 1;
+                self.spawn_poller(path);
             }
             PmpptRequest::Finish {} => unreachable!("Finish message is already processed outside"),
         }
