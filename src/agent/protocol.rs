@@ -2,8 +2,14 @@
 
 /// Input data for the agent.
 pub enum PmpptRequest {
-    Poll { path: String },
-    Spawn { cmd: String, args: Vec<String>, mode: SpawnMode },
+    Poll {
+        path: String,
+    },
+    Spawn {
+        cmd: String,
+        args: Vec<String>,
+        mode: SpawnMode,
+    },
     Finish {},
 }
 

@@ -94,7 +94,7 @@ impl protocol::Protocol for LocalProtocol {
                             cmd,
                             args: args.unwrap_or_default(), // default is no args
                             mode: local_mode_to_agent(mode), // default is foreground
-                        }
+                        };
                     }
                     // handle local commands specially
                     LocalRequest::Sleep { time } => {
@@ -106,7 +106,9 @@ impl protocol::Protocol for LocalProtocol {
                         if let Some(prompt) = prompt {
                             println!("Description: {}", prompt);
                         }
-                        std::io::stdin().read(&mut [0u8]).expect("stdin is broken");
+                        std::io::stdin()
+                            .read_exact(&mut [0u8])
+                            .expect("stdin is broken");
                     }
                 },
                 // when local requests are over, implicitly send Finish command
