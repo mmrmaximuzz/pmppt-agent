@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use env_logger::Env;
 use log::{error, info};
@@ -7,8 +7,42 @@ mod agent;
 mod protocol_impl;
 
 /// Little helper function to convert str literals to error message.
-fn emsg(s: &str) -> Result<(), String> {
-    Err(s.into())
+fn emsg<T, U: ?Sized + AsRef<str>>(s: &U) -> Result<T, String> {
+    Err(s.as_ref().into())
+}
+
+fn find_max_numeric_dir(base: &Path) -> u32 {
+    let mut max_dir = 0;
+
+    for dir in base.read_dir().expect("cannot read dir").flatten() {
+        let name = dir.file_name();
+        match name.to_string_lossy().parse::<u32>() {
+            Ok(value) => max_dir = std::cmp::max(max_dir, value),
+            Err(_) => continue,
+        }
+    }
+
+    max_dir
+}
+
+fn create_outdir(base: PathBuf) -> Result<PathBuf, String> {
+    if base.exists() && !base.is_dir() {
+        return emsg(&format!(
+            "path provided '{}' is not a directory",
+            base.to_string_lossy()
+        ));
+    }
+
+    let new_dir_num = if base.exists() {
+        find_max_numeric_dir(&base) + 1
+    } else {
+        0
+    };
+
+    let new_dir = base.join(Path::new(&new_dir_num.to_string()));
+    std::fs::create_dir_all(&new_dir).unwrap_or_else(|_| panic!("cannot create dir {:?}", new_dir));
+
+    Ok(new_dir)
 }
 
 fn main_local(args: &[String]) -> Result<(), String> {
@@ -17,13 +51,18 @@ fn main_local(args: &[String]) -> Result<(), String> {
     }
 
     let json_path = &args[0];
-    let logs_path = Path::new(&args[1]).to_owned();
-    info!("starting agent in local mode with config: {}", json_path);
-    info!("output directory: {}", logs_path.to_string_lossy());
+    let logs_path = PathBuf::from(&args[1]);
+    let outdir = create_outdir(logs_path)?;
 
+    info!("agent is in local mode with config: {}", json_path);
+    info!("output directory: {}", outdir.to_string_lossy());
     let proto = protocol_impl::LocalProtocol::from_json(json_path)?;
-    let agent = agent::Agent::new(proto, logs_path);
+    let agent = agent::Agent::new(proto, outdir.clone());
+
+    info!("staring the agent");
     agent.serve();
+
+    info!("done, output directory: {}", outdir.to_string_lossy());
     Ok(())
 }
 
