@@ -93,7 +93,7 @@ where
         let stop_flag_agent = Arc::new(AtomicBool::default());
         let stop_flag_thread = stop_flag_agent.clone();
         let poll_thread =
-            std::thread::spawn(move || poller::poll(path_poll, path_out, stop_flag_thread));
+            std::thread::spawn(move || poller::poll(vec![path_poll], path_out, stop_flag_thread));
 
         let res = self.polls.insert(
             id,
