@@ -5,11 +5,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-const SLEEP_TIME: Duration = Duration::from_millis(250);
+const DEFAULT_SLEEP_TIME: Duration = Duration::from_millis(250);
 const FILE_CAP: usize = 4 << 10;
 const TOTAL_CAP: usize = 64 << 10;
 
-pub fn poll(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>) {
+pub struct PollConfig {
+    sleep_time: Duration,
+}
+
+pub fn poll_with_config(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>, cfg: PollConfig) {
     // open destination file with the final content
     let mut output = File::create(dest).expect("cannot open file");
 
@@ -23,8 +27,8 @@ pub fn poll(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>) {
         outbuffer.clear();
 
         // prepare the common timestamp
-        outbuffer
-            .push_str(&chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, false));
+        let now = chrono::Local::now();
+        outbuffer.push_str(&now.to_rfc3339_opts(chrono::SecondsFormat::Micros, false));
         outbuffer.push('\n');
 
         // read the files
@@ -44,10 +48,21 @@ pub fn poll(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>) {
             .write_all(outbuffer.as_bytes())
             .expect("cannot write");
 
-        std::thread::sleep(SLEEP_TIME);
+        std::thread::sleep(cfg.sleep_time);
     }
 
     output.flush().expect("cannot flush");
+}
+
+pub fn poll(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>) {
+    poll_with_config(
+        srcs,
+        dest,
+        stop,
+        PollConfig {
+            sleep_time: DEFAULT_SLEEP_TIME,
+        },
+    )
 }
 
 #[test]
