@@ -5,6 +5,9 @@ pub enum PmpptRequest {
     Poll {
         path: String,
     },
+    PollGlob {
+        glob: String,
+    },
     Spawn {
         cmd: String,
         args: Vec<String>,

@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
     thread::JoinHandle,
 };
@@ -80,32 +80,27 @@ where
         id
     }
 
-    fn spawn_poller(&mut self, path_poll: &Path) {
+    fn spawn_poller(&mut self, paths: &[PathBuf], name: &str) {
         let id = self.get_next_id();
         let path_out = self.outdir.join(format!("{:03}-poll.log", id));
-        let path_poll = path_poll.to_owned(); // clone to PathBuf to send to thread
-        let path_poll_str = path_poll
-            .clone()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string();
+        let paths = paths.to_owned(); // full clone to send to thread
 
         let stop_flag_agent = Arc::new(AtomicBool::default());
         let stop_flag_thread = stop_flag_agent.clone();
         let poll_thread =
-            std::thread::spawn(move || poller::poll(vec![path_poll], path_out, stop_flag_thread));
+            std::thread::spawn(move || poller::poll(paths, path_out, stop_flag_thread));
 
         let res = self.polls.insert(
             id,
             Poll {
                 stop: stop_flag_agent,
                 thrd: poll_thread,
-                name: path_poll_str.clone(),
+                name: name.to_owned(),
             },
         );
         assert!(res.is_none(), "got duplicate poll/proc on {}", id);
 
-        info!("Poller:   id={}, path='{}'", id, path_poll_str);
+        info!("Poller:   id={}, path='{}'", id, name);
     }
 
     fn spawn_process_foreground(&mut self, cmd: String, args: Vec<String>) {
@@ -162,7 +157,14 @@ where
     fn handle_message(&mut self, msg: PmpptRequest) {
         match msg {
             PmpptRequest::Poll { path } => {
-                self.spawn_poller(Path::new(&path));
+                self.spawn_poller(&[PathBuf::from(&path)], &path);
+            }
+            PmpptRequest::PollGlob { glob: pattern } => {
+                let paths: Vec<PathBuf> = glob::glob(&pattern)
+                    .expect("failed to lookup glob pattern")
+                    .map(|g| g.unwrap())
+                    .collect();
+                self.spawn_poller(&paths, &pattern);
             }
             PmpptRequest::Spawn { cmd, args, mode } => {
                 self.spawn_process(cmd, args, mode);

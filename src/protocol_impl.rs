@@ -36,6 +36,9 @@ enum LocalRequest {
     Poll {
         path: String,
     },
+    PollGlob {
+        glob: String,
+    },
     Spawn {
         cmd: String,
         args: Option<Vec<String>>,
@@ -89,6 +92,7 @@ impl protocol::Protocol for LocalProtocol {
                 Some(local_req) => match local_req {
                     // provide mapped command as-is
                     LocalRequest::Poll { path } => break PmpptRequest::Poll { path },
+                    LocalRequest::PollGlob { glob } => break PmpptRequest::PollGlob { glob },
                     LocalRequest::Spawn { cmd, args, mode } => {
                         break PmpptRequest::Spawn {
                             cmd,
