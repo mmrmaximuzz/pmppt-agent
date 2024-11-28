@@ -157,9 +157,14 @@ where
     fn handle_message(&mut self, msg: PmpptRequest) {
         match msg {
             PmpptRequest::Poll { pattern } => {
-                let paths: Vec<PathBuf> = glob::glob(&pattern)
-                    .expect("failed to lookup glob pattern")
-                    .map(|g| g.unwrap())
+                // expand braces and interpret each expansion as a glob
+                let paths: Vec<PathBuf> = brace_expand::brace_expand(&pattern)
+                    .into_iter()
+                    .flat_map(|p| {
+                        glob::glob(&p)
+                            .expect("failed to lookup glob pattern")
+                            .map(|g| g.unwrap())
+                    })
                     .collect();
                 self.spawn_poller(&paths, &pattern);
             }
