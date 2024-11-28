@@ -9,7 +9,7 @@ use serde::Serialize;
 
 const DEFAULT_SLEEP_TIME: Duration = Duration::from_millis(250);
 const FILE_CAP: usize = 4 << 10;
-const TOTAL_CAP: usize = 64 << 10;
+const TOTAL_CAP: usize = 32 << 10;
 
 pub struct PollConfig {
     sleep_time: Duration,
@@ -50,10 +50,8 @@ pub fn poll_with_config(srcs: Vec<PathBuf>, dest: PathBuf, stop: Arc<AtomicBool>
     let mut output = File::create(dest).expect("cannot open file");
     store_header(&mut output, &create_header(&srcs, &cfg));
 
-    let mut strbuffer = String::new();
-    let mut outbuffer = String::new();
-    strbuffer.reserve(FILE_CAP);
-    outbuffer.reserve(TOTAL_CAP);
+    let mut strbuffer = String::with_capacity(FILE_CAP);
+    let mut outbuffer = String::with_capacity(TOTAL_CAP);
 
     while !stop.load(Ordering::Acquire) {
         // clear the previous content
