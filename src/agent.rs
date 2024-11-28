@@ -205,5 +205,9 @@ where
                 _ => unreachable!("found both process and poller for id={}", i),
             }
         }
+
+        // sanity checks
+        assert!(self.polls.is_empty());
+        assert!(self.procs.is_empty());
     }
 }
