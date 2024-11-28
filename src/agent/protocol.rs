@@ -3,10 +3,7 @@
 /// Input data for the agent.
 pub enum PmpptRequest {
     Poll {
-        path: String,
-    },
-    PollGlob {
-        glob: String,
+        pattern: String,
     },
     Spawn {
         cmd: String,

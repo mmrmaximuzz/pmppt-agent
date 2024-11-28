@@ -156,10 +156,7 @@ where
 
     fn handle_message(&mut self, msg: PmpptRequest) {
         match msg {
-            PmpptRequest::Poll { path } => {
-                self.spawn_poller(&[PathBuf::from(&path)], &path);
-            }
-            PmpptRequest::PollGlob { glob: pattern } => {
+            PmpptRequest::Poll { pattern } => {
                 let paths: Vec<PathBuf> = glob::glob(&pattern)
                     .expect("failed to lookup glob pattern")
                     .map(|g| g.unwrap())

@@ -34,10 +34,7 @@ fn local_mode_to_agent(mode: Option<ExecMode>) -> SpawnMode {
 enum LocalRequest {
     // mapped PMPPT commands
     Poll {
-        path: String,
-    },
-    PollGlob {
-        glob: String,
+        pattern: String,
     },
     Spawn {
         cmd: String,
@@ -91,8 +88,7 @@ impl protocol::Protocol for LocalProtocol {
             match self.requests.pop() {
                 Some(local_req) => match local_req {
                     // provide mapped command as-is
-                    LocalRequest::Poll { path } => break PmpptRequest::Poll { path },
-                    LocalRequest::PollGlob { glob } => break PmpptRequest::PollGlob { glob },
+                    LocalRequest::Poll { pattern } => break PmpptRequest::Poll { pattern },
                     LocalRequest::Spawn { cmd, args, mode } => {
                         break PmpptRequest::Spawn {
                             cmd,
