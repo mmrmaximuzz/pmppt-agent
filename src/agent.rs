@@ -198,7 +198,7 @@ where
                         .unwrap_or_else(|_| panic!("cannot join polling thread: {}", i));
                 }
 
-                // OK, it was FG process
+                // OK, it was FG process or it has been stopped already by the pmppt client
                 (None, None) => (),
 
                 // this should never happen
