@@ -1,6 +1,7 @@
 //! Module defining PMPPT protocol between host and agent.
 
 /// Input data for the agent.
+#[derive(Debug, Clone)]
 pub enum PmpptRequest {
     Poll {
         pattern: String,
@@ -10,19 +11,21 @@ pub enum PmpptRequest {
         args: Vec<String>,
         mode: SpawnMode,
     },
-    Finish {},
+    Finish,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum SpawnMode {
     Foreground,
     BackgroundWait,
     BackgroundKill,
 }
 
+pub type IdOrError = Result<u32, String>;
+
 /// Agent's responses.
 pub enum PmpptResponse {
-    Poll { id: u32 },
+    Poll(IdOrError),
 }
 
 /// Generic transport protocol interface.

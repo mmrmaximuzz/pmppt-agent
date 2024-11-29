@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::time::Duration;
 
+use log::debug;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -52,6 +53,7 @@ enum LocalRequest {
 
 pub struct LocalProtocol {
     requests: Vec<LocalRequest>,
+    current: Option<PmpptRequest>,
 }
 
 impl LocalProtocol {
@@ -71,7 +73,10 @@ impl LocalProtocol {
         // reverse the vector to extract the elements with `pop`
         requests.reverse();
 
-        Ok(LocalProtocol { requests })
+        Ok(LocalProtocol {
+            requests,
+            current: None,
+        })
     }
 }
 
@@ -84,7 +89,12 @@ const GENERIC_PROMPT: &str = r#"
 
 impl protocol::Protocol for LocalProtocol {
     fn recv_request(&mut self) -> Option<PmpptRequest> {
-        loop {
+        // Extract the new local agent request from the config.
+        //
+        // In local mode we don't have any real PMPPT agent connected. So here we try to imitate its
+        // existence by remembering the current executing request to associate agent responses with
+        // it.
+        self.current = loop {
             match self.requests.pop() {
                 Some(local_req) => match local_req {
                     // provide mapped command as-is
@@ -112,13 +122,32 @@ impl protocol::Protocol for LocalProtocol {
                     }
                 },
                 // when local requests are over, implicitly send Finish command
-                None => break PmpptRequest::Finish {},
+                None => break PmpptRequest::Finish,
             }
         }
-        .into()
+        .into();
+
+        // return the request to the agent to execute
+        self.current.clone()
     }
 
-    fn send_response(&mut self, _response: protocol::PmpptResponse) -> Option<()> {
-        todo!()
+    // imitate that we "receive" a response from PMPPT agent
+    fn send_response(&mut self, response: protocol::PmpptResponse) -> Option<()> {
+        match response {
+            // TODO: stop the execution instead of just panic
+            protocol::PmpptResponse::Poll(Err(msg)) => {
+                panic!(
+                    r#"Poll request failed: req={:?}, error="{}""#,
+                    self.current, msg
+                );
+            }
+
+            protocol::PmpptResponse::Poll(Ok(id)) => {
+                debug!("Poll result: id={}", id);
+            }
+        }
+
+        // in local mode this function cannot fail
+        Some(())
     }
 }

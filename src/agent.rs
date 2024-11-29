@@ -11,7 +11,7 @@ use subprocess::{Exec, Popen};
 
 mod poller;
 pub mod protocol;
-use protocol::{PmpptRequest, Protocol, SpawnMode};
+use protocol::{IdOrError, PmpptRequest, PmpptResponse, Protocol, SpawnMode};
 
 /// PMPPT Agent instance.
 ///
@@ -62,7 +62,7 @@ where
                     error!("got incorrect message, stop serving");
                     break;
                 }
-                Some(PmpptRequest::Finish {}) => {
+                Some(PmpptRequest::Finish) => {
                     info!("got 'finish' request, stopping running activities");
                     break;
                 }
@@ -75,12 +75,11 @@ where
     }
 
     fn get_next_id(&mut self) -> u32 {
-        let id = self.count;
         self.count += 1;
-        id
+        self.count
     }
 
-    fn spawn_poller(&mut self, paths: &[PathBuf], name: &str) {
+    fn spawn_poller(&mut self, paths: &[PathBuf], name: &str) -> IdOrError {
         let id = self.get_next_id();
         let path_out = self.outdir.join(format!("{:03}-poll.log", id));
         let paths = paths.to_owned(); // full clone to send to thread
@@ -101,6 +100,9 @@ where
         assert!(res.is_none(), "got duplicate poll/proc on {}", id);
 
         info!("Poller:   id={}, path='{}'", id, name);
+
+        // TODO: add checks for failures in poller spawning
+        Ok(id)
     }
 
     fn spawn_process_foreground(&mut self, cmd: String, args: Vec<String>) {
@@ -166,12 +168,24 @@ where
                             .map(|g| g.unwrap())
                     })
                     .collect();
-                self.spawn_poller(&paths, &pattern);
+
+                // TODO: fail even if just a single brace expansion led to nothing
+                // interpret empty search result as a failure
+                let res = if !paths.is_empty() {
+                    self.spawn_poller(&paths, &pattern)
+                } else {
+                    Err(format!(
+                        "got empty search result on expanding '{}'",
+                        pattern
+                    ))
+                };
+
+                self.proto.send_response(PmpptResponse::Poll(res));
             }
             PmpptRequest::Spawn { cmd, args, mode } => {
                 self.spawn_process(cmd, args, mode);
             }
-            PmpptRequest::Finish {} => unreachable!("Finish message is already processed outside"),
+            PmpptRequest::Finish => unreachable!("Finish message is already processed outside"),
         }
     }
 
@@ -179,7 +193,7 @@ where
         info!("stopping agent");
 
         // stop in reverse order
-        for i in (0..self.count).rev() {
+        for i in (1..=self.count).rev() {
             match (self.procs.remove(&i), self.polls.remove(&i)) {
                 (Some(mut proc), None) => {
                     info!("stopping process id={}, name='{}'", i, proc.name);
