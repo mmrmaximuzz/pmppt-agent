@@ -6,7 +6,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use log::{error, info};
+use log::{error, info, warn};
 use subprocess::{Exec, Popen};
 
 mod poller;
@@ -56,22 +56,26 @@ where
     pub fn serve(mut self) {
         info!("agent started");
 
-        loop {
+        let is_abnormal = loop {
             match self.proto.recv_request() {
                 None => {
-                    error!("got incorrect message, stop serving");
-                    break;
+                    error!("failed to get correct message, stop serving agent");
+                    break true;
+                }
+                Some(PmpptRequest::Abort) => {
+                    warn!("got 'abort' request, emergency stop");
+                    break true;
                 }
                 Some(PmpptRequest::Finish) => {
                     info!("got 'finish' request, stopping running activities");
-                    break;
+                    break false;
                 }
                 Some(msg) => self.handle_message(msg),
             }
-        }
+        };
 
         // stop itself before Drop
-        self.stop();
+        self.stop(is_abnormal);
     }
 
     fn get_next_id(&mut self) -> u32 {
@@ -185,19 +189,21 @@ where
             PmpptRequest::Spawn { cmd, args, mode } => {
                 self.spawn_process(cmd, args, mode);
             }
-            PmpptRequest::Finish => unreachable!("Finish message is already processed outside"),
+            PmpptRequest::Finish => unreachable!("Finish must be already processed outside"),
+            PmpptRequest::Abort => unreachable!("Abort must be already processed outside"),
         }
     }
 
-    fn stop(mut self) {
-        info!("stopping agent");
+    fn stop(mut self, abnormal: bool) {
+        let mode = if abnormal { "emergency" } else { "graceful" };
+        info!("stopping agent in {} mode", mode);
 
         // stop in reverse order
         for i in (1..=self.count).rev() {
             match (self.procs.remove(&i), self.polls.remove(&i)) {
                 (Some(mut proc), None) => {
                     info!("stopping process id={}, name='{}'", i, proc.name);
-                    if !proc.wait4 {
+                    if !proc.wait4 || abnormal {
                         // send the signal to terminate it now
                         proc.popen
                             .terminate()

@@ -4,12 +4,11 @@ use std::fs;
 use std::io::Read;
 use std::time::Duration;
 
-use log::debug;
+use log::{debug, error};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::agent::protocol;
-use crate::agent::protocol::{PmpptRequest, SpawnMode};
+use crate::agent::protocol::{PmpptRequest, PmpptResponse, Protocol, SpawnMode};
 
 #[derive(Deserialize)]
 #[allow(non_camel_case_types)]
@@ -42,6 +41,7 @@ enum LocalRequest {
         args: Option<Vec<String>>,
         mode: Option<ExecMode>,
     },
+    Abort,
     // local transport commands (non-PMPPT)
     Pause {
         prompt: Option<String>,
@@ -87,13 +87,13 @@ const GENERIC_PROMPT: &str = r#"
 ==================================================
 "#;
 
-impl protocol::Protocol for LocalProtocol {
+impl Protocol for LocalProtocol {
     fn recv_request(&mut self) -> Option<PmpptRequest> {
         // Extract the new local agent request from the config.
         //
-        // In local mode we don't have any real PMPPT agent connected. So here we try to imitate its
-        // existence by remembering the current executing request to associate agent responses with
-        // it.
+        // In local mode we don't have any real PMPPT controller connected. So here we try to
+        // imitate its existence by remembering the current executing request to associate agent
+        // responses with it.
         self.current = loop {
             match self.requests.pop() {
                 Some(local_req) => match local_req {
@@ -106,6 +106,8 @@ impl protocol::Protocol for LocalProtocol {
                             mode: local_mode_to_agent(mode), // default is foreground
                         };
                     }
+                    LocalRequest::Abort => break PmpptRequest::Abort,
+
                     // handle local commands specially
                     LocalRequest::Sleep { time } => {
                         std::thread::sleep(Duration::from_secs_f64(time));
@@ -121,7 +123,8 @@ impl protocol::Protocol for LocalProtocol {
                             .expect("stdin is broken");
                     }
                 },
-                // when local requests are over, implicitly send Finish command
+
+                // when local requests are over, implicitly generate Finish request
                 None => break PmpptRequest::Finish,
             }
         }
@@ -132,17 +135,20 @@ impl protocol::Protocol for LocalProtocol {
     }
 
     // imitate that we "receive" a response from PMPPT agent
-    fn send_response(&mut self, response: protocol::PmpptResponse) -> Option<()> {
+    fn send_response(&mut self, response: PmpptResponse) -> Option<()> {
         match response {
             // TODO: stop the execution instead of just panic
-            protocol::PmpptResponse::Poll(Err(msg)) => {
-                panic!(
+            PmpptResponse::Poll(Err(msg)) => {
+                error!(
                     r#"Poll request failed: req={:?}, error="{}""#,
                     self.current, msg
                 );
+
+                // emulate the Abort message from the controller
+                self.requests.push(LocalRequest::Abort);
             }
 
-            protocol::PmpptResponse::Poll(Ok(id)) => {
+            PmpptResponse::Poll(Ok(id)) => {
                 debug!("Poll result: id={}", id);
             }
         }

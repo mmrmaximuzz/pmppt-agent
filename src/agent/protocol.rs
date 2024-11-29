@@ -12,6 +12,7 @@ pub enum PmpptRequest {
         mode: SpawnMode,
     },
     Finish,
+    Abort,
 }
 
 #[derive(Debug, Clone, Copy)]
