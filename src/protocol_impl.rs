@@ -1,8 +1,8 @@
 //! Implementations of PMPPT protocol for the agent.
 
-use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::time::Duration;
+use std::{fs, net::TcpStream};
 
 use log::{debug, error};
 use serde::Deserialize;
@@ -155,5 +155,77 @@ impl Protocol for LocalProtocol {
 
         // in local mode this function cannot fail
         Some(())
+    }
+}
+
+pub struct TcpProtocol {
+    conn: TcpStream,
+}
+
+impl TcpProtocol {
+    pub fn from_connection(conn: TcpStream) -> Self {
+        Self { conn }
+    }
+}
+
+impl Protocol for TcpProtocol {
+    // TODO: this is a stub protocol for manual testing, replace it
+    fn recv_request(&mut self) -> Option<PmpptRequest> {
+        loop {
+            let mut buf = [0u8; 1];
+            self.conn.read_exact(&mut buf).ok()?;
+            match buf[0] {
+                b'c' => {
+                    return Some(PmpptRequest::Poll {
+                        pattern: "/proc/stat".to_string(),
+                    })
+                }
+                b'm' => {
+                    return Some(PmpptRequest::Poll {
+                        pattern: "/proc/meminfo".to_string(),
+                    })
+                }
+                b'e' => {
+                    return Some(PmpptRequest::Poll {
+                        pattern: "/does/not/exist".to_string(),
+                    })
+                }
+                b's' => {
+                    return Some(PmpptRequest::Spawn {
+                        cmd: "/usr/bin/sleep".to_string(),
+                        args: vec!["5".to_string()],
+                        mode: SpawnMode::Foreground,
+                    })
+                }
+                b'k' => {
+                    return Some(PmpptRequest::Spawn {
+                        cmd: "/usr/bin/sleep".to_string(),
+                        args: vec!["5".to_string()],
+                        mode: SpawnMode::BackgroundKill,
+                    })
+                }
+                b'w' => {
+                    return Some(PmpptRequest::Spawn {
+                        cmd: "/usr/bin/sleep".to_string(),
+                        args: vec!["5".to_string()],
+                        mode: SpawnMode::BackgroundWait,
+                    })
+                }
+                b'f' => return Some(PmpptRequest::Finish),
+                _ => {}
+            };
+        }
+    }
+
+    // TODO: this is a stub protocol for manual testing, replace it
+    fn send_response(&mut self, response: PmpptResponse) -> Option<()> {
+        let PmpptResponse::Poll(ioe) = response;
+
+        let msg = match ioe {
+            Ok(id) => format!("OK, ID: {}\n", id),
+            Err(s) => format!("ERR: {}\n", s),
+        };
+
+        self.conn.write_all(msg.as_bytes()).ok()
     }
 }

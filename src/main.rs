@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    net::{Ipv4Addr, TcpListener},
+    path::{Path, PathBuf},
+};
 
 use env_logger::Env;
 use log::{error, info};
@@ -25,7 +28,7 @@ fn find_max_numeric_dir(base: &Path) -> u32 {
     max_dir
 }
 
-fn create_outdir(base: PathBuf) -> Result<PathBuf, String> {
+fn create_outdir(base: &Path) -> Result<PathBuf, String> {
     if base.exists() && !base.is_dir() {
         return emsg(&format!(
             "path provided '{}' is not a directory",
@@ -34,7 +37,7 @@ fn create_outdir(base: PathBuf) -> Result<PathBuf, String> {
     }
 
     let new_dir_num = if base.exists() {
-        find_max_numeric_dir(&base) + 1
+        find_max_numeric_dir(base) + 1
     } else {
         0
     };
@@ -52,7 +55,7 @@ fn main_local(args: &[String]) -> Result<(), String> {
 
     let json_path = &args[0];
     let logs_path = PathBuf::from(&args[1]);
-    let outdir = create_outdir(logs_path)?;
+    let outdir = create_outdir(&logs_path)?;
 
     info!("agent is in local mode with config: {}", json_path);
     info!("output directory: {}", outdir.to_string_lossy());
@@ -66,8 +69,42 @@ fn main_local(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn main_tcp(_args: &[String]) -> Result<(), String> {
-    emsg("tcp transport not implemented")
+fn main_tcp(args: &[String]) -> Result<(), String> {
+    if args.len() != 2 {
+        return emsg("usage: PROG tcp LISTEN_PORT PATH_TO_OUTPUT");
+    }
+
+    let port = args[0]
+        .parse::<u16>()
+        .map_err(|e| format!("cannot get TCP port to listen: {}", e))?;
+
+    let logs_path = PathBuf::from(&args[1]);
+
+    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), port))
+        .map_err(|e| format!("cannot bind TCP listener on port {}: {}", port, e))?;
+
+    info!("agent is listening on {}", listener.local_addr().unwrap());
+    info!("output directory root: {}", logs_path.to_string_lossy());
+
+    loop {
+        let (conn, from) = listener
+            .accept()
+            .map_err(|e| format!("TCP listen failed: {}", e))?;
+
+        info!("got PMPPT connection from {}", from);
+
+        let outdir = create_outdir(&logs_path)?;
+        let proto = protocol_impl::TcpProtocol::from_connection(conn);
+        let agent = agent::Agent::new(proto, outdir.clone());
+
+        agent.serve();
+
+        info!(
+            "done with {}, logs here: {}",
+            from,
+            outdir.to_string_lossy()
+        );
+    }
 }
 
 fn main_wrapper(args: &[String]) -> Result<(), String> {
