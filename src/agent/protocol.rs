@@ -23,10 +23,13 @@ pub enum SpawnMode {
 }
 
 pub type IdOrError = Result<u32, String>;
+pub type OutOrError = Result<(Vec<u8>, Vec<u8>), String>;
 
 /// Agent's responses.
 pub enum PmpptResponse {
     Poll(IdOrError),
+    SpawnFg(OutOrError),
+    SpawnBg(IdOrError),
 }
 
 /// Generic transport protocol interface.

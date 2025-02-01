@@ -147,9 +147,34 @@ impl Protocol for LocalProtocol {
                 // emulate the Abort message from the controller
                 self.requests.push(LocalRequest::Abort);
             }
-
             PmpptResponse::Poll(Ok(id)) => {
                 debug!("Poll result: id={}", id);
+            }
+
+            PmpptResponse::SpawnFg(Err(msg)) => {
+                error!(
+                    r#"FG spawn failed: req={:?}, error="{}""#,
+                    self.current, msg
+                );
+
+                // emulate the Abort message from the controller
+                self.requests.push(LocalRequest::Abort);
+            }
+            PmpptResponse::SpawnFg(Ok(_)) => {
+                // no need for FG spawn result in local mode
+            }
+
+            PmpptResponse::SpawnBg(Err(msg)) => {
+                error!(
+                    r#"BG spawn failed: req={:?}, error="{}""#,
+                    self.current, msg
+                );
+
+                // emulate the Abort message from the controller
+                self.requests.push(LocalRequest::Abort);
+            }
+            PmpptResponse::SpawnBg(Ok(id)) => {
+                debug!("BG spawn result: id={}", id);
             }
         }
 
@@ -219,11 +244,23 @@ impl Protocol for TcpProtocol {
 
     // TODO: this is a stub protocol for manual testing, replace it
     fn send_response(&mut self, response: PmpptResponse) -> Option<()> {
-        let PmpptResponse::Poll(ioe) = response;
-
-        let msg = match ioe {
-            Ok(id) => format!("OK, ID: {}\n", id),
-            Err(s) => format!("ERR: {}\n", s),
+        let msg = match response {
+            PmpptResponse::Poll(res) => match res {
+                Ok(id) => format!("Poll OK, ID: {}\n", id),
+                Err(s) => format!("Poll ERR: {}\n", s),
+            },
+            PmpptResponse::SpawnFg(res) => match res {
+                Ok((out, err)) => format!(
+                    "FG OK:\nout={}\nerr={}\n",
+                    String::from_utf8_lossy(&out),
+                    String::from_utf8_lossy(&err),
+                ),
+                Err(s) => format!("FG ERR: {}\n", s),
+            },
+            PmpptResponse::SpawnBg(res) => match res {
+                Ok(id) => format!("BG OK, ID: {}\n", id),
+                Err(s) => format!("BG ERR: {}\n", s),
+            },
         };
 
         self.conn.write_all(msg.as_bytes()).ok()

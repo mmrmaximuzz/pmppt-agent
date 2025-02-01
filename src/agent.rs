@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
+    io::Read,
     path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
     thread::JoinHandle,
@@ -11,7 +12,7 @@ use subprocess::{Exec, Popen};
 
 mod poller;
 pub mod protocol;
-use protocol::{IdOrError, PmpptRequest, PmpptResponse, Protocol, SpawnMode};
+use protocol::{IdOrError, OutOrError, PmpptRequest, PmpptResponse, Protocol, SpawnMode};
 
 /// PMPPT Agent instance.
 ///
@@ -109,10 +110,12 @@ where
         Ok(id)
     }
 
-    fn spawn_process_foreground(&mut self, cmd: String, args: Vec<String>) {
+    fn spawn_process_foreground(&mut self, cmd: String, args: Vec<String>) -> OutOrError {
         let id = self.get_next_id();
-        let file_out = File::create_new(self.outdir.join(format!("{:03}-out.log", id))).unwrap();
-        let file_err = File::create_new(self.outdir.join(format!("{:03}-err.log", id))).unwrap();
+        let outpath = self.outdir.join(format!("{:03}-out.log", id));
+        let errpath = self.outdir.join(format!("{:03}-err.log", id));
+        let file_out = File::create_new(outpath.clone()).unwrap();
+        let file_err = File::create_new(errpath.clone()).unwrap();
 
         let cmd = Exec::cmd(&cmd)
             .args(&args)
@@ -121,12 +124,38 @@ where
 
         // collect the name before spawning the process
         let name = cmd.to_cmdline_lossy();
-        let status = cmd.join().expect("failed to capture output");
+
+        info!("FG spawn: id={}, name='{}'", id, name);
+
+        let status = cmd.join().map_err(|e| {
+            let msg = format!("failed to spawn fg process: {}", e);
+            error!("{}", msg);
+            msg
+        })?;
 
         info!("FG spawn: id={}, name='{}', success={:?}", id, name, status);
+
+        // collect the results
+        let mut stdout = Vec::with_capacity(4096);
+        let mut stderr = Vec::with_capacity(4096);
+        File::open(outpath)
+            .unwrap()
+            .read_to_end(&mut stdout)
+            .expect("cannot read stdout file");
+        File::open(errpath)
+            .unwrap()
+            .read_to_end(&mut stderr)
+            .expect("cannot read stderr file");
+
+        Ok((stdout, stderr))
     }
 
-    fn spawn_process_background(&mut self, cmd: String, args: Vec<String>, wait4: bool) {
+    fn spawn_process_background(
+        &mut self,
+        cmd: String,
+        args: Vec<String>,
+        wait4: bool,
+    ) -> IdOrError {
         let id = self.get_next_id();
         let file_out = File::create_new(self.outdir.join(format!("{:03}-out.log", id))).unwrap();
         let file_err = File::create_new(self.outdir.join(format!("{:03}-err.log", id))).unwrap();
@@ -137,7 +166,11 @@ where
             .stderr(file_err);
 
         let name = cmd.to_cmdline_lossy();
-        let popen = cmd.popen().expect("failed to start process");
+        let popen = cmd.popen().map_err(|e| {
+            let msg = format!("failed to spawn bg process: {}", e);
+            error!("{}", msg);
+            msg
+        })?;
 
         let res = self.procs.insert(
             id,
@@ -150,13 +183,21 @@ where
         assert!(res.is_none(), "got duplicate poll/proc on {}", id);
 
         info!("BG spawn: id={}, name='{}', wait4={}", id, name, wait4);
+
+        Ok(id)
     }
 
-    fn spawn_process(&mut self, cmd: String, args: Vec<String>, mode: SpawnMode) {
+    fn spawn_process(&mut self, cmd: String, args: Vec<String>, mode: SpawnMode) -> PmpptResponse {
         match mode {
-            SpawnMode::Foreground => self.spawn_process_foreground(cmd, args),
-            SpawnMode::BackgroundWait => self.spawn_process_background(cmd, args, true),
-            SpawnMode::BackgroundKill => self.spawn_process_background(cmd, args, false),
+            SpawnMode::Foreground => {
+                PmpptResponse::SpawnFg(self.spawn_process_foreground(cmd, args))
+            }
+            SpawnMode::BackgroundWait => {
+                PmpptResponse::SpawnBg(self.spawn_process_background(cmd, args, true))
+            }
+            SpawnMode::BackgroundKill => {
+                PmpptResponse::SpawnBg(self.spawn_process_background(cmd, args, false))
+            }
         }
     }
 
@@ -178,16 +219,16 @@ where
                 let res = if !paths.is_empty() {
                     self.spawn_poller(&paths, &pattern)
                 } else {
-                    Err(format!(
-                        "got empty search result on expanding '{}'",
-                        pattern
-                    ))
+                    let msg = format!("got empty search result on expanding '{}'", pattern);
+                    error!("{}", msg);
+                    Err(msg)
                 };
 
                 self.proto.send_response(PmpptResponse::Poll(res));
             }
             PmpptRequest::Spawn { cmd, args, mode } => {
-                self.spawn_process(cmd, args, mode);
+                let res = self.spawn_process(cmd, args, mode);
+                self.proto.send_response(res);
             }
             PmpptRequest::Finish => unreachable!("Finish must be already processed outside"),
             PmpptRequest::Abort => unreachable!("Abort must be already processed outside"),
